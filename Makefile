@@ -24,8 +24,8 @@ phonebook_orig: $(SRCS_common) phonebook_orig.c phonebook_orig.h
 		-DIMPL="\"$@.h\"" -o $@ \
 		$(SRCS_common) $@.c
 
-phonebook_opt: $(SRCS_common) phonebook_opt.c phonebook_opt.h
-	$(CC) $(CFLAGS_common) $(CFLAGS_opt) \
+phonebook_opt: $(SRCS_common) phonebook_opt.c phonebook_opt.h thread.c thread.h
+	$(CC) $(CFLAGS_common) $(CFLAGS_opt)  $ thread.c \
 		-DIMPL="\"$@.h\"" -o $@ \
 		$(SRCS_common) $@.c
 

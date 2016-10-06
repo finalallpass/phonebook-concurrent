@@ -8,10 +8,18 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/mman.h>
+#include <fcntl.h>
+
 
 #include IMPL
+#include "thread.h"
+#include "field_alignment.c"
+
 
 #define DICT_FILE "./dictionary/words.txt"
+#define ALIGN_FILE "aligned.txt"
+
+
 
 static double diff_in_second(struct timespec t1, struct timespec t2)
 {
@@ -28,32 +36,19 @@ static double diff_in_second(struct timespec t1, struct timespec t2)
 
 int main(int argc, char *argv[])
 {
-#ifndef OPT
-    FILE *fp;
-    int i = 0;
-    char line[MAX_LAST_NAME_SIZE];
-#else
-    struct timespec mid;
-#endif
     struct timespec start, end;
     double cpu_time1, cpu_time2;
 
 #ifndef OPT
+    int i = 0;
+    char line[MAX_LAST_NAME_SIZE];
+    FILE *fp;
     /* check file opening */
     fp = fopen(DICT_FILE, "r");
     if (!fp) {
         printf("cannot open the file\n");
         return -1;
     }
-#else
-
-#include "file.c"
-#include "debug.h"
-#include <fcntl.h>
-#define ALIGN_FILE "align.txt"
-    file_align(DICT_FILE, ALIGN_FILE, MAX_LAST_NAME_SIZE);
-    int fd = open(ALIGN_FILE, O_RDONLY | O_NONBLOCK);
-    off_t fs = fsize( ALIGN_FILE);
 #endif
 
     /* build the entry */
@@ -69,9 +64,9 @@ int main(int argc, char *argv[])
 
 #if defined(OPT)
 
-#ifndef THREAD_NUM
-#define THREAD_NUM 4
-#endif
+    file_align(DICT_FILE, ALIGN_FILE, MAX_LAST_NAME_SIZE);
+    int fd = open(ALIGN_FILE, O_RDONLY | O_NONBLOCK);
+    off_t fs = fsize(ALIGN_FILE);
 
     clock_gettime(CLOCK_REALTIME, &start);
 
@@ -81,37 +76,40 @@ int main(int argc, char *argv[])
 
     /* allocate at beginning */
     entry *entry_pool = (entry *) malloc(sizeof(entry) * fs / MAX_LAST_NAME_SIZE);
-
     assert(entry_pool && "entry_pool error");
 
     pthread_setconcurrency(THREAD_NUM + 1);
 
-    pthread_t *tid = (pthread_t *) malloc(sizeof( pthread_t) * THREAD_NUM);
-    append_a **app = (append_a **) malloc(sizeof(append_a *) * THREAD_NUM);
-    for (int i = 0; i < THREAD_NUM; i++)
-        app[i] = new_append_a(map + MAX_LAST_NAME_SIZE * i, map + fs, i, THREAD_NUM, entry_pool + i);
+    /* Malloc for Pthread id and args */
+    pthread_t *tid = (pthread_t *) malloc(sizeof(pthread_t) * THREAD_NUM);
+    
+        pthread_mutex_t lock;
+        pthread_mutex_init(&lock, NULL);
+    
+        threadpool_t *pool = threadpool_create(THREAD_NUM, 512 , 0); 
+        append_a **app = (append_a **) malloc(sizeof(append_a *) * THREAD_NUM);
 
-    clock_gettime(CLOCK_REALTIME, &mid);
-    for (int i = 0; i < THREAD_NUM; i++)
-        pthread_create( &tid[i], NULL, (void *) &append, (void *) app[i]);
+        //pthread_mutex_lock(&lock);
+        for( int i = 0 ; i < THREAD_NUM ; i++ ){
+        app[i] = new_append_a(map + MAX_LAST_NAME_SIZE * i,map + fs, i, THREAD_NUM, entry_pool + i);
+        //pthread_mutex_unlock(&lock);
+    }
 
-    for (int i = 0; i < THREAD_NUM; i++)
-        pthread_join(tid[i], NULL);
-
-    entry *etmp;
-    pHead = pHead->pNext;
-    for (int i = 0; i < THREAD_NUM; i++) {
-        if (i == 0) {
-            pHead = app[i]->pHead->pNext;
-            dprintf("Connect %d head string %s %p\n", i, app[i]->pHead->pNext->lastName, app[i]->ptr);
-        } else {
-            etmp->pNext = app[i]->pHead->pNext;
-            dprintf("Connect %d head string %s %p\n", i, app[i]->pHead->pNext->lastName, app[i]->ptr);
+        for( int i = 0 ; i < THREAD_NUM ; i++ ){
+            threadpool_add(pool, &append, (void *)app[i], 0);
         }
 
+    /* Graceful shutdown */
+    threadpool_destroy(pool, 1);
+    //pthread_mutex_destory(&lock);
+
+    entry *etmp = pHead;
+    pHead = app[0]->pHead;
+    etmp = app[0]->pLast;
+
+    for (int i = 1; i < THREAD_NUM; i++) {
+        etmp->pNext = app[i]->pHead;
         etmp = app[i]->pLast;
-        dprintf("Connect %d tail string %s %p\n", i, app[i]->pLast->lastName, app[i]->ptr);
-        dprintf("round %d\n", i);
     }
 
     clock_gettime(CLOCK_REALTIME, &end);
@@ -130,18 +128,25 @@ int main(int argc, char *argv[])
     clock_gettime(CLOCK_REALTIME, &end);
     cpu_time1 = diff_in_second(start, end);
 
-#endif
-
-#ifndef OPT
     /* close file as soon as possible */
     fclose(fp);
+#endif
+
+#if defined COMPARE
+    e = pHead;
+    FILE *fp = fopen("entry_words.txt","w+");
+    while (e) {
+        fprintf(fp, "%s", e->lastName);
+        e = e->pNext;
+    }
+    fclose(fp);
+    compare("entry_words.txt",DICT_FILE);
 #endif
 
     e = pHead;
 
     /* the givn last name to find */
     char input[MAX_LAST_NAME_SIZE] = "zyxel";
-    e = pHead;
 
     assert(findName(input, e) &&
            "Did you implement findName() in " IMPL "?");
@@ -169,7 +174,7 @@ int main(int argc, char *argv[])
     printf("execution time of findName() : %lf sec\n", cpu_time2);
 
 #ifndef OPT
-    if (pHead->pNext) free(pHead->pNext);
+    while (pHead->pNext) free(pHead->pNext);
     free(pHead);
 #else
     free(entry_pool);

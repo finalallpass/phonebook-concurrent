@@ -5,7 +5,7 @@
 
 #include "phonebook_opt.h"
 #include "debug.h"
-
+#include "thread.h"
 entry *findName(char lastname[], entry *pHead)
 {
     size_t len = strlen( lastname);
@@ -34,7 +34,6 @@ append_a *new_append_a(char *ptr, char *eptr, int tid, int ntd, entry *start)
     app->tid = tid;
     app->nthread = ntd;
     app->entryStart = start;
-
     app->pHead = (app->pLast = app->entryStart);
 
     return app;
@@ -42,10 +41,10 @@ append_a *new_append_a(char *ptr, char *eptr, int tid, int ntd, entry *start)
 
 void append(void *arg)
 {
-    struct timespec start, end;
-    double cpu_time;
+    //struct timespec start, end;
+    //double cpu_time;
 
-    clock_gettime( CLOCK_REALTIME, &start);
+    //clock_gettime( CLOCK_REALTIME, &start);
 
     append_a *app = (append_a *) arg;
 
@@ -61,10 +60,10 @@ void append(void *arg)
         dprintf("thread %d append string = %s\n", app->tid, app->pLast->lastName);
         app->pLast->pNext = NULL;
     }
-    clock_gettime(CLOCK_REALTIME, &end);
-    cpu_time = diff_in_second(start, end);
+    //clock_gettime(CLOCK_REALTIME, &end);
+    //cpu_time = diff_in_second(start, end);
 
-    dprintf("thread take %lf sec, count %d\n", cpu_time, count);
+    //dprintf("thread take %lf sec, count %d\n", cpu_time, count);
 
     pthread_exit(NULL);
 }
@@ -76,7 +75,7 @@ void show_entry(entry *pHead)
         pHead = pHead->pNext;
     }
 }
-
+/*
 static double diff_in_second(struct timespec t1, struct timespec t2)
 {
     struct timespec diff;
@@ -89,3 +88,4 @@ static double diff_in_second(struct timespec t1, struct timespec t2)
     }
     return (diff.tv_sec + diff.tv_nsec / 1000000000.0);
 }
+*/
